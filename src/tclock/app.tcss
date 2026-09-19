@@ -1,0 +1,28 @@
+Screen {
+    align: center middle;
+}
+
+Screen.-flash {
+    background: ansi_green;
+}
+
+Screen.-flash Label {
+    color: ansi_black;
+}
+
+#body {
+    height: auto;
+}
+
+#header, #footer {
+    width: 100%;
+    text-align: center;
+}
+
+#header {
+    margin-bottom: 1;
+}
+
+#footer {
+    margin-top: 1;
+}
