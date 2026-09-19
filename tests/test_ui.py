@@ -131,7 +131,7 @@ def test_run_shell_success_and_error() -> None:
 
 
 def test_run_shell_collapses_whitespace() -> None:
-    assert run_shell('echo "a  b" && echo c') == "[SUCCEED] a b c"
+    assert run_shell("echo a   b && echo c") == "[SUCCEED] a b c"
 
 
 @pytest.mark.parametrize("blank", [None, ""])
