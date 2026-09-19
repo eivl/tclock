@@ -1,5 +1,7 @@
 Screen {
     align: center middle;
+    overflow: hidden hidden;
+    layers: base keybar;
 }
 
 Screen.-flash {
@@ -12,6 +14,7 @@ Screen.-flash Label {
 
 #body {
     height: auto;
+    overflow: hidden hidden;
 }
 
 #header, #footer {
@@ -25,4 +28,28 @@ Screen.-flash Label {
 
 #footer {
     margin-top: 1;
+}
+
+/* The key bar sits on its own layer so showing it never moves the digits. */
+#keybar {
+    layer: keybar;
+    dock: bottom;
+}
+
+HelpScreen {
+    align: center middle;
+    background: $background 60%;
+}
+
+HelpScreen > #help {
+    width: auto;
+    height: auto;
+    padding: 1 2;
+    border: round $primary;
+    border-title-align: center;
+}
+
+HelpScreen #help-keys {
+    width: auto;
+    height: auto;
 }

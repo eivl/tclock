@@ -1,12 +1,12 @@
 import pytest
 from textual.color import Color
-from textual.widgets import Label
+from textual.widgets import Footer, Label
 
 from tclock import font
 from tclock.config import Config
 from tclock.modes import Clock, Stopwatch, Timer
 from tclock.modes.base import PAUSED_FOOTER
-from tclock.ui import BigTime, ClockApp, run_shell
+from tclock.ui import BigTime, ClockApp, HelpScreen, run_shell
 from tests.conftest import FakeClock
 
 
@@ -140,3 +140,108 @@ def test_bigtime_blank_text_keeps_height(blank: str | None) -> None:
     big.set_text("12")
     big.set_text(blank)
     assert big.rows == [""] * (font.GLYPH_HEIGHT * 2)
+
+
+def screen_text(app: ClockApp) -> list[str]:
+    return [strip.text.rstrip() for strip in app.screen._compositor.render_strips()]
+
+
+@pytest.mark.parametrize("size", [(20, 5), (10, 3), (40, 7)])
+async def test_small_terminal_clips_instead_of_scrolling(size: tuple[int, int]) -> None:
+    timer = Timer([90_000], titles=["Focus"], now_ms=FakeClock())
+    app = ClockApp(timer, color="ansi_green", size=1, config=Config())
+    async with app.run_test(size=size) as pilot:
+        await pilot.pause()
+        lines = screen_text(app)
+        assert len(lines) == size[1]
+        for line in lines:
+            assert len(line) <= size[0]
+            # Only header letters, block glyphs and spaces: no scrollbar characters.
+            assert set(line) <= set("Focus █")
+        # The header is on the first row and the digits start right below the gap.
+        assert lines[0].strip() == "Focus"
+        assert lines[2].startswith("████")  # top-left of the "1" glyph
+
+
+async def test_command_palette_is_disabled() -> None:
+    app = ClockApp(Clock(), color="ansi_green", size=1, config=Config())
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+p")
+        await pilot.pause()
+        assert len(app.screen_stack) == 1
+        await pilot.press("q")
+
+
+async def test_ctrl_c_quits_cleanly() -> None:
+    app = ClockApp(Clock(), color="ansi_green", size=1, config=Config())
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+c")
+        await pilot.pause()
+    assert not app.is_running
+    assert app.return_code == 0
+
+
+async def test_key_bar_hidden_until_input_then_fades() -> None:
+    app = ClockApp(Clock(), color="ansi_green", size=1, config=Config())
+    app.KEY_BAR_SECONDS = 0.2
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.pause()
+        bar = app.query_one(Footer)
+        digits_before = app.query_one(BigTime).region
+        assert bar.display is False
+        await pilot.press("space")  # any key, even one that does nothing in clock mode
+        await pilot.pause()
+        assert bar.display is True
+        assert "Quit" in "".join(strip.text for strip in app.screen._compositor.render_strips())
+        assert app.query_one(BigTime).region == digits_before  # digits do not jump
+        await pilot.pause(0.5)
+        assert bar.display is False
+        await pilot.hover(BigTime)  # mouse movement counts as input too
+        await pilot.pause()
+        assert bar.display is True
+        await pilot.press("q")
+
+
+async def test_question_mark_toggles_help_overlay() -> None:
+    app = ClockApp(Clock(), color="ansi_green", size=1, config=Config())
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.press("question_mark")
+        await pilot.pause()
+        assert len(app.screen_stack) == 2
+        assert isinstance(app.screen, HelpScreen)
+        text = "".join(strip.text for strip in app.screen._compositor.render_strips())
+        for expected in ("Quit", "Pause", "Clock", "Stopwatch", "Timer", "Ctrl+C", "help"):
+            assert expected in text, expected
+        await pilot.press("question_mark")
+        await pilot.pause()
+        assert len(app.screen_stack) == 1
+        await pilot.press("question_mark")
+        await pilot.pause()
+        await pilot.press("q")  # q inside help closes the help, does not quit
+        await pilot.pause()
+        assert len(app.screen_stack) == 1
+        assert app.is_running
+        await pilot.press("question_mark")
+        await pilot.pause()
+        await pilot.press("escape")
+        await pilot.pause()
+        assert len(app.screen_stack) == 1
+        await pilot.press("q")
+    assert not app.is_running
+
+
+async def test_clock_keeps_ticking_behind_help(fake_clock: FakeClock) -> None:
+    timer = Timer([5_000], now_ms=fake_clock)
+    app = ClockApp(timer, color="ansi_green", size=1, config=Config())
+    async with app.run_test() as pilot:
+        await pilot.press("question_mark")
+        await pilot.pause()
+        fake_clock.ms = 2_000
+        app.tick()  # must not raise even though the help screen is on top
+        assert app.main_screen.query_one(BigTime).rows == font.render("0:03.0")
+        fake_clock.ms = 6_000  # overrun: flash applies to the main screen
+        app.tick()
+        assert app.main_screen.has_class("-flash")
+        await pilot.press("escape")
+        await pilot.pause()
+        await pilot.press("q")

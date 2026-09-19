@@ -55,6 +55,11 @@ def text_width(text: str, size: int) -> int:
     return len(text) * (GLYPH_WIDTH * size + SPACING) - SPACING
 
 
+def text_width_rows(rows: list[str]) -> int:
+    """Width of already rendered rows (all rows of a glyph string are equally wide)."""
+    return len(rows[0]) if rows else 0
+
+
 def render(text: str, size: int = 1) -> list[str]:
     """Render ``text`` as ``GLYPH_HEIGHT * size`` rows of block characters.
 

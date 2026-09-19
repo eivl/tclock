@@ -29,13 +29,17 @@ tclock -c '#e63946' -s 2           # colour and size apply to every mode
 
 Keys while running:
 
-| Key     | Action                                 |
-|---------|----------------------------------------|
-| `q`     | quit                                   |
-| `Space` | pause / resume (timer and stopwatch)   |
-| `c`     | switch to clock                        |
-| `w`     | switch to stopwatch                    |
-| `t`     | switch to timer (defaults from config) |
+| Key              | Action                                 |
+|------------------|----------------------------------------|
+| `q`, `Ctrl+C`    | quit                                   |
+| `Space`          | pause / resume (timer and stopwatch)   |
+| `c`              | switch to clock                        |
+| `w`              | switch to stopwatch                    |
+| `t`              | switch to timer (defaults from config) |
+| `?`              | show / hide the key overlay            |
+
+A key bar with the same bindings appears along the bottom whenever you touch the keyboard
+or mouse and fades out after a few seconds, so the clock stays clean at rest.
 
 Run `tclock --help` or `tclock <mode> --help` for every flag.
 
@@ -126,6 +130,13 @@ A broken file or a wrong value produces a warning on stderr and the default is u
 - `tclock timer` without `-d` uses the `[timer] durations` from the config file
   (`25m`, `5m` by default) instead of a fixed `5m`.
 - `tclock countdown` without `--time` falls back to `[countdown] time` in the config file.
+- `Ctrl+C` quits. In the Rust binary it switches to clock mode, because its key matcher
+  ignores the Ctrl modifier (so `Ctrl+Q`, `Ctrl+W` and `Ctrl+T` also act like the plain
+  letters there).
+- Mode keys work from every mode. In the Rust binary a widget, once created, stays in a
+  fixed priority order (clock > timer > stopwatch > countdown), so e.g. `t` from the
+  clock has no visible effect and `w` from a timer keeps showing the timer.
+- The `?` help overlay and the auto-hiding key bar are additions.
 
 ## Development
 
