@@ -42,12 +42,14 @@ tclock/
 ├── src/tclock/
 │   ├── __init__.py       __version__ via importlib.metadata
 │   ├── cli.py            Typer app → Options → resolve → run UI → post-exit print
-│   ├── config.py         TOML loading, Config dataclasses, CLI/config/default merge
+│   ├── config.py         TOML loading, Config dataclasses
+│   ├── resolve.py        Options dataclass, CLI/config/default merge, engine builders
 │   ├── parsing.py        parse_duration, parse_color, parse_datetime, parse_timezone
 │   ├── timefmt.py        DurationFormat, format_duration(ms, fmt)
 │   ├── font.py           BricksFont glyph table, render(text, size) -> list[str]
 │   ├── modes/
-│   │   ├── __init__.py   Frame, Mode protocol, Pausable protocol
+│   │   ├── __init__.py   re-exports
+│   │   ├── base.py       Frame, Mode protocol, Pausable protocol, ElapsedClock
 │   │   ├── clock.py
 │   │   ├── timer.py
 │   │   ├── stopwatch.py
@@ -91,8 +93,8 @@ countdown  -t/--time WHEN  -T/--title T  -c/--continue  -r/--reverse  -m/--milli
     offset). Result is an aware datetime in local time.
   - timezone: `zoneinfo.ZoneInfo(name)`; `ZoneInfoNotFoundError` → CLI error.
 - `cli.main()` is the console-script entry point. It builds an `Options` dataclass from
-  parsed arguments, calls `config.resolve(options)` to obtain a mode engine plus display
-  style, runs `ui.run(engine, style, config)`, and after the app exits prints
+  parsed arguments, calls `resolve.resolve(options, config)` to obtain a mode engine plus
+  display style, runs `ui.run(engine, ...)`, and after the app exits prints
   `Stopwatch time: <display_time>` to stdout if the final engine is a `Stopwatch`.
 
 ### Differences from the Rust version
@@ -155,14 +157,16 @@ class Pausable(Protocol):
 
 - **Clock**(`show_date, show_secs, show_millis, tz`): text is `HH:MM`, `HH:MM:SS` or
   `HH:MM:SS.d`; header `YYYY-MM-DD` plus ` <tz key>` when a timezone is set.
-- **Stopwatch**: `accumulated_ms` and `started_at_ms | None`; starts running. Footer
+- **Stopwatch**: wraps a shared `ElapsedClock` (accumulated ms + optional start stamp,
+  pause/resume); starts running. Footer
   `PAUSED (press <SPACE> to resume)` while paused. `display_time()` returns the
   `HourMinSecDeci` string for the exit print.
 - **Timer**(`durations_ms, titles, repeat, fmt, paused, auto_quit, execute`):
   `remaining()` walks checkpoints exactly as the Rust `remaining_time()` (advances through
   durations, wraps when `repeat`). Header is `titles[min(idx, len-1)]` if any titles.
   When remaining < 0: `flash = abs(remaining) % 1000 < 500`, text is the elapsed overrun
-  (shown only in the flash-on phase, `None` otherwise), and on the first such tick
+  (shown only in the flash-on phase, `None` otherwise; header and footer stay visible in
+  both phases so the layout does not jump), and on the first such tick
   `execute_pending` becomes `True`. The UI runs the command and calls
   `set_execute_result(str)`; that string becomes the footer. `finished = auto_quit and
   execute_result is not None`. With an empty `execute`, the result is `""` immediately,
