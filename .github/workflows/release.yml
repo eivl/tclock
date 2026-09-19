@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   bump:
@@ -38,3 +39,10 @@ jobs:
           git commit -m "chore: release v${VERSION}"
           git tag "v${VERSION}"
           git push origin main "v${VERSION}"
+      # Pushes made with GITHUB_TOKEN never trigger other workflows, so the
+      # tag push above cannot start Publish on its own. Dispatch it explicitly.
+      - name: Dispatch publish workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: gh workflow run publish.yml --ref "v${VERSION}"
