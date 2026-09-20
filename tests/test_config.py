@@ -1,3 +1,4 @@
+from dataclasses import fields
 from pathlib import Path
 
 import pytest
@@ -122,3 +123,86 @@ def test_load_config_defaults_to_config_path(
     path = write(tmp_path, '[default]\nmode = "stopwatch"\n')
     monkeypatch.setattr(cfg, "config_path", lambda: path)
     assert cfg.load_config().default.mode == "stopwatch"
+
+
+# --- Template ------------------------------------------------------------------------------
+
+
+def _uncommented(template: str) -> str:
+    """Turn every '# key = value' line into 'key = value', keeping other comments."""
+    out = []
+    for line in template.splitlines():
+        stripped = line[2:] if line.startswith("# ") else line
+        out.append(stripped if " = " in stripped and not stripped.startswith("#") else line)
+    return "\n".join(out) + "\n"
+
+
+def test_template_loads_as_pure_defaults(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text(cfg.render_template(path), encoding="utf-8")
+    warnings: list[str] = []
+    assert cfg.load_config(path, warn=warnings.append) == cfg.Config()
+    assert warnings == []
+
+
+def test_template_lists_every_key_once_per_section() -> None:
+    template = cfg.render_template(Path("/x/config.toml"))
+    blocks = {block.split("]\n", 1)[0]: block for block in template.split("\n[")[1:]}
+    for section_field in fields(cfg.Config()):
+        block = blocks[section_field.name]
+        section = getattr(cfg.Config(), section_field.name)
+        for key_field in fields(section):
+            assert block.count(f"\n# {key_field.name} = ") == 1, key_field.name
+    assert len(blocks) == len(fields(cfg.Config()))
+
+
+def test_template_uncommented_round_trips_to_defaults(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text(_uncommented(cfg.render_template(path)), encoding="utf-8")
+    warnings: list[str] = []
+    loaded = cfg.load_config(path, warn=warnings.append)
+    assert warnings == []
+    # Keys that are unset by default carry an example value; everything else is the default.
+    assert loaded.clock.timezone == "Europe/Oslo"
+    assert loaded.countdown.time == "2027-01-01"
+    assert loaded.countdown.title == "New year"
+    loaded.clock.timezone = None
+    loaded.countdown.time = None
+    loaded.countdown.title = None
+    assert loaded == cfg.Config()
+
+
+def test_template_mentions_path_and_help() -> None:
+    template = cfg.render_template(Path("/somewhere/config.toml"))
+    assert "# Location: /somewhere/config.toml" in template
+    assert "# Digit size, a positive integer\n# size = 1\n" in template
+    assert "(unset by default)\n# timezone = " in template
+
+
+def test_every_key_has_help_and_unset_keys_have_examples() -> None:
+    for section_field in fields(cfg.Config()):
+        section = getattr(cfg.Config(), section_field.name)
+        for key_field in fields(section):
+            assert key_field.name in cfg.KEY_HELP[section_field.name]
+            if getattr(section, key_field.name) is None:
+                assert key_field.name in cfg.EXAMPLES[section_field.name]
+
+
+def test_write_template_creates_parents_and_refuses_overwrite(tmp_path: Path) -> None:
+    path = tmp_path / "nested" / "dir" / "config.toml"
+    assert cfg.write_template(path) == path
+    assert path.read_text(encoding="utf-8") == cfg.render_template(path)
+    path.write_text("custom = 1\n", encoding="utf-8")
+    with pytest.raises(cfg.ConfigExistsError):
+        cfg.write_template(path)
+    assert path.read_text(encoding="utf-8") == "custom = 1\n"
+    cfg.write_template(path, force=True)
+    assert path.read_text(encoding="utf-8") == cfg.render_template(path)
+
+
+def test_write_template_defaults_to_config_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(cfg, "config_path", lambda: tmp_path / "config.toml")
+    assert cfg.write_template() == tmp_path / "config.toml"
+    assert (tmp_path / "config.toml").is_file()

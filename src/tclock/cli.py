@@ -1,11 +1,12 @@
 """Command-line interface. Parses arguments into :class:`Options` and starts the TUI."""
 
+from pathlib import Path
 from typing import Annotated
 
 import typer
 
 from tclock import __version__, ui
-from tclock.config import load_config
+from tclock.config import ConfigExistsError, config_path, load_config, write_template
 from tclock.modes import Stopwatch
 from tclock.parsing import ParseError, parse_color, parse_datetime, parse_duration, parse_timezone
 from tclock.resolve import Options, ResolveError, resolve
@@ -18,6 +19,12 @@ app = typer.Typer(
     no_args_is_help=False,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
+config_app = typer.Typer(
+    help="Manage the config file.",
+    no_args_is_help=True,
+    context_settings={"help_option_names": ["-h", "--help"]},
+)
+app.add_typer(config_app, name="config")
 
 
 def _validate_color(value: str | None) -> str | None:
@@ -197,6 +204,36 @@ def countdown(
     options.reverse = reverse
     options.millis = millis
     _launch(options)
+
+
+@config_app.command("init")
+def config_init(
+    path: Annotated[
+        Path | None,
+        typer.Option(
+            "--path", "-p", dir_okay=False, help="Write here instead of the platform location."
+        ),
+    ] = None,
+    force: Annotated[
+        bool, typer.Option("--force", "-f", help="Overwrite an existing file.")
+    ] = False,
+) -> None:
+    """Create a config file with every option listed at its default, commented out."""
+    try:
+        written = write_template(path, force=force)
+    except ConfigExistsError as exc:
+        typer.echo(f"Error: {exc} already exists. Use --force to overwrite it.", err=True)
+        raise typer.Exit(code=1) from None
+    except OSError as exc:
+        typer.echo(f"Error: could not write config file: {exc}", err=True)
+        raise typer.Exit(code=1) from None
+    typer.echo(f"Wrote {written}")
+
+
+@config_app.command("path")
+def config_path_command() -> None:
+    """Print where the config file is read from on this platform."""
+    typer.echo(str(config_path()))
 
 
 def _launch(options: Options) -> None:

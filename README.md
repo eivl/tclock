@@ -87,6 +87,10 @@ tclock reads an optional TOML file:
 | macOS   | `~/Library/Application Support/tclock/config.toml`          |
 | Windows | `%APPDATA%\tclock\config.toml`                              |
 
+`tclock config init` writes a starter file to that location with every key listed at its
+default and commented out, ready to edit. `tclock config path` prints the location. Use
+`--path FILE` to write elsewhere and `--force` to overwrite an existing file.
+
 Command-line flags override the file; the file overrides built-in defaults. Every key is
 optional. The full schema, with the built-in defaults:
 

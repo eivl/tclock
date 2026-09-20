@@ -123,3 +123,102 @@ def _matches(value: object, expected: Any) -> bool:
     if expected is int:
         return isinstance(value, int) and not isinstance(value, bool)
     return isinstance(value, expected)
+
+
+# --- Config file template -----------------------------------------------------------------
+
+# One-line help per key, used as the comment above it in the generated config file.
+KEY_HELP: dict[str, dict[str, str]] = {
+    "default": {
+        "mode": "Mode when none is given on the command line: clock, timer, stopwatch or countdown",
+        "color": "Digit color: a name like green or lightblue, or #rrggbb",
+        "size": "Digit size, a positive integer",
+    },
+    "clock": {
+        "show_date": "Show the date under the time",
+        "show_seconds": "Show seconds",
+        "show_millis": "Show tenths of a second",
+        "timezone": "IANA zone such as Europe/Oslo; the local zone when unset",
+    },
+    "timer": {
+        "durations": "Durations to count down in sequence: 30s, 5m, 1h, 2d",
+        "titles": "One title per duration",
+        "repeat": "Restart when the last duration ends",
+        "show_millis": "Show tenths of a second",
+        "start_paused": "Start paused; space resumes",
+        "auto_quit": "Exit when time is up",
+        "execute": "Command to run when time is up, joined with spaces into one shell command",
+    },
+    "countdown": {
+        "time": "Target: 2027-01-01, 20:00, 2026-12-25 20:00:00 or RFC 3339",
+        "title": "Header text above the digits",
+        "show_millis": "Show tenths of a second",
+        "continue_on_zero": "Keep counting past the target",
+        "reverse": "Count up since the target instead of down to it",
+    },
+}
+
+# Example values for keys whose default is unset, so the commented line is ready to use.
+EXAMPLES: dict[str, dict[str, str]] = {
+    "clock": {"timezone": "Europe/Oslo"},
+    "countdown": {"time": "2027-01-01", "title": "New year"},
+}
+
+
+def _toml_value(value: object) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, str):
+        return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    if isinstance(value, list):
+        return "[" + ", ".join(_toml_value(item) for item in value) + "]"
+    raise TypeError(f"cannot render {value!r} as TOML")
+
+
+def render_template(path: Path | None = None) -> str:
+    """The config file with every key present, commented out, at its built-in default.
+
+    Generated from the dataclasses so it cannot drift from what :func:`load_config` reads.
+    """
+    path = path if path is not None else config_path()
+    lines = [
+        "# tclock configuration",
+        f"# Location: {path.absolute()}",
+        "#",
+        "# Every key is optional and is shown at its built-in default. Remove the leading",
+        '# "#" from a line to change that value. Command-line flags override this file.',
+    ]
+    defaults = Config()
+    for section_field in fields(defaults):
+        name = section_field.name
+        section = getattr(defaults, name)
+        lines += ["", f"[{name}]"]
+        for key_field in fields(section):
+            key = key_field.name
+            value = getattr(section, key)
+            help_text = KEY_HELP[name][key]
+            if value is None:
+                value = EXAMPLES[name][key]
+                help_text += " (unset by default)"
+            lines.append(f"# {help_text}")
+            lines.append(f"# {key} = {_toml_value(value)}")
+    return "\n".join(lines) + "\n"
+
+
+class ConfigExistsError(FileExistsError):
+    """The config file is already there and ``force`` was not given."""
+
+
+def write_template(path: Path | None = None, *, force: bool = False) -> Path:
+    """Write the template to ``path`` (the platform config path by default).
+
+    Raises :class:`ConfigExistsError` if the file exists and ``force`` is not set.
+    """
+    path = path if path is not None else config_path()
+    if path.exists() and not force:
+        raise ConfigExistsError(str(path))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(render_template(path), encoding="utf-8")
+    return path
