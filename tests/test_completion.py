@@ -42,7 +42,9 @@ def test_detect_shell_errors_are_actionable(monkeypatch: pytest.MonkeyPatch) -> 
 def test_activate_command_per_shell() -> None:
     path = Path("/h/.bash_completions/tclock.sh")
     assert comp.activate_command("bash", path) == f"source '{path}'"
-    assert comp.activate_command("zsh", path) == "fpath+=~/.zfunc; autoload -Uz compinit; compinit"
+    assert comp.activate_command("zsh", path) == (
+        "fpath+=~/.zfunc; autoload -Uz compinit; compinit; export TCLOCK_COMPLETION=zsh"
+    )
     assert comp.activate_command("powershell", path) == ". $PROFILE"
     assert comp.activate_command("pwsh", path) == ". $PROFILE"
     assert comp.activate_command("fish", path) is None
@@ -118,3 +120,83 @@ class _FailingSubprocess:
 def test_status_rejects_unknown_shell() -> None:
     with pytest.raises(comp.ShellError):
         comp.status("elvish", Path("/nowhere"))
+
+
+# --- hook and active check -------------------------------------------------------------------
+
+
+def test_hook_line_per_shell() -> None:
+    assert comp.hook_line("bash") == "export TCLOCK_COMPLETION=bash"
+    assert comp.hook_line("zsh") == "export TCLOCK_COMPLETION=zsh"
+    assert comp.hook_line("powershell") == '$env:TCLOCK_COMPLETION = "powershell"'
+    assert comp.hook_line("pwsh") == '$env:TCLOCK_COMPLETION = "pwsh"'
+    assert comp.hook_line("fish") is None
+
+
+def test_scripts_embed_the_hook_where_the_script_is_sourced_at_startup() -> None:
+    assert comp.script("bash").endswith("export TCLOCK_COMPLETION=bash\n")
+    assert comp.script("pwsh").endswith('$env:TCLOCK_COMPLETION = "pwsh"\n')
+    assert "TCLOCK_COMPLETION" not in comp.script("zsh")
+    assert "TCLOCK_COMPLETION" not in comp.script("fish")
+
+
+def test_install_zsh_adds_hook_to_zshrc_once(home: Path) -> None:
+    comp.install_completion("zsh")
+    comp.install_completion("zsh")
+    zshrc = (home / ".zshrc").read_text(encoding="utf-8")
+    assert zshrc.count("export TCLOCK_COMPLETION=zsh") == 1
+    assert "fpath+=~/.zfunc" in zshrc
+    assert "TCLOCK_COMPLETION" not in (home / ".zfunc" / "_tclock").read_text(encoding="utf-8")
+
+
+def test_install_bash_script_contains_hook(home: Path) -> None:
+    path = comp.install_completion("bash")
+    assert path.read_text(encoding="utf-8") == comp.script("bash")
+    assert comp.status("bash", home).hook_present
+
+
+def test_active_in_this_shell_matches_shell_name() -> None:
+    assert comp.active_in_this_shell("zsh", {"TCLOCK_COMPLETION": "zsh"}) is True
+    assert comp.active_in_this_shell("bash", {"TCLOCK_COMPLETION": "zsh"}) is False
+    assert comp.active_in_this_shell("zsh", {}) is False
+    assert comp.active_in_this_shell("fish", {"TCLOCK_COMPLETION": "fish"}) is None
+
+
+def test_active_reads_os_environ_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TCLOCK_COMPLETION", "bash")
+    assert comp.active_in_this_shell("bash") is True
+    monkeypatch.delenv("TCLOCK_COMPLETION")
+    assert comp.active_in_this_shell("bash") is False
+
+
+def test_status_reports_active_and_hook(home: Path) -> None:
+    comp.install_completion("zsh")
+    st = comp.status("zsh", home, {"TCLOCK_COMPLETION": "zsh"})
+    assert st.installed and st.hook_present and st.active is True
+    st = comp.status("zsh", home, {})
+    assert st.installed and st.hook_present and st.active is False
+
+
+def test_status_zsh_install_predating_hook(home: Path) -> None:
+    comp.install_completion("zsh")
+    zshrc = home / ".zshrc"
+    zshrc.write_text(
+        zshrc.read_text(encoding="utf-8").replace("export TCLOCK_COMPLETION=zsh\n", ""),
+        encoding="utf-8",
+    )
+    st = comp.status("zsh", home, {})
+    assert st.installed and not st.hook_present
+
+
+def test_status_fish_has_no_active_notion(home: Path) -> None:
+    comp.install_completion("fish")
+    st = comp.status("fish", home, {"TCLOCK_COMPLETION": "fish"})
+    assert st.installed and st.hook_present and st.active is None
+
+
+def test_status_powershell_active(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    profile = tmp_path / "profile.ps1"
+    monkeypatch.setattr(comp, "powershell_profile", lambda shell: profile)
+    profile.write_text(comp.script("pwsh"), encoding="utf-8")
+    st = comp.status("pwsh", environ={"TCLOCK_COMPLETION": "pwsh"})
+    assert st.installed and st.hook_present and st.active is True

@@ -84,12 +84,14 @@ Completion for commands and flags is available for bash, zsh, fish and PowerShel
 
 ```shell
 tclock --install-completion   # detects the shell, installs, and prints how to activate it now
-tclock completion             # checks whether it is installed and up to date
+tclock completion             # checks whether it is installed, up to date and active here
 tclock --show-completion      # prints the script for the current shell
 ```
 
 `tclock completion --script --shell fish` prints the script for another shell, for example to
-put in `~/.config/fish/completions/tclock.fish` by hand. Elvish, nushell and other shells are
+put in `~/.config/fish/completions/tclock.fish` by hand. The installed hook exports
+`TCLOCK_COMPLETION=<shell>`, which is how `tclock completion` knows whether the shell you are
+typing in has loaded it (fish loads completions on first use and needs no hook). Elvish, nushell and other shells are
 not supported by the completion machinery tclock uses (Typer and Click).
 
 ## Configuration
