@@ -149,22 +149,20 @@ uv run tclock
 
 ## Releasing
 
-Releases are automated with GitHub Actions:
+There is no manual release step. Every pull request merged into `main` is released to
+[PyPI](https://pypi.org/project/tclock/) and gets a GitHub release with generated notes.
+Control what happens with labels on the pull request:
 
-1. Every pull request merged into `main` cuts a release. **Release** runs `uv version --bump`,
-   commits `chore: release vX.Y.Z` to `main` and pushes the tag `vX.Y.Z`. The bump is `patch`
-   unless the PR carries the label `release:minor` or `release:major`. A PR labelled
-   `skip-release` is merged without a release. The workflow can also be run by hand from the
-   Actions tab for `rc` and `stable` bumps.
-2. The tag triggers **Publish**, which builds the sdist and wheel and uploads them to PyPI
-   with [trusted publishing](https://docs.pypi.org/trusted-publishers/), and a GitHub release
-   is created with notes grouped by PR label (see `.github/release.yml`).
+| Label           | Effect                                        |
+| --------------- | --------------------------------------------- |
+| *(none)*        | Patch release, for example `0.1.4` to `0.1.5` |
+| `release:minor` | Minor release, `0.1.5` to `0.2.0`             |
+| `release:major` | Major release, `0.2.0` to `1.0.0`             |
+| `skip-release`  | Merge without releasing, for docs or CI work  |
 
-One-time setup: on pypi.org add a trusted publisher for this repository with workflow
-`publish.yml` and environment `pypi`, and create a `pypi` environment in the GitHub repo
-settings. `main` is protected by a ruleset that requires a pull request and the `CI passed`
-check. The Release workflow pushes with a write-enabled deploy key (secret
-`RELEASE_DEPLOY_KEY`), which is exempt from the ruleset.
+Release notes are grouped by the PR's other labels (`enhancement`, `bug`, `documentation`,
+`ci`, `dependencies`). Pre-release bumps (`rc`, `stable`) are run by hand from the
+**Release** workflow in the Actions tab. Never bump the version or push tags manually.
 
 ## License
 
