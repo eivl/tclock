@@ -27,3 +27,13 @@ jobs:
       - run: uv run mypy src
       - run: uv run pytest
       - run: uv build
+
+  # Single check for branch protection to require, so the matrix can change
+  # without touching the ruleset.
+  ci-ok:
+    name: CI passed
+    if: always()
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ needs.test.result }}" = "success"

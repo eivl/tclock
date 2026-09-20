@@ -11,16 +11,18 @@ on:
 
 permissions:
   contents: write
-  actions: write
 
 jobs:
   bump:
     runs-on: ubuntu-latest
     steps:
+      # Push with a deploy key rather than GITHUB_TOKEN: the key can bypass the
+      # main branch ruleset, and its pushes trigger CI and Publish normally.
       - uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
+          ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
       - uses: astral-sh/setup-uv@v10.1.0
         with:
           python-version: "3.14"
@@ -44,10 +46,3 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.bump.outputs.version }}
         run: gh release create "v${VERSION}" --verify-tag --title "v${VERSION}" --generate-notes
-      # Pushes made with GITHUB_TOKEN never trigger other workflows, so the
-      # tag push above cannot start Publish on its own. Dispatch it explicitly.
-      - name: Dispatch publish workflow
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.bump.outputs.version }}
-        run: gh workflow run publish.yml --ref "v${VERSION}"
