@@ -25,6 +25,7 @@ dependencies = [
     "textual>=8.0",
     "typer>=0.15",
     "platformdirs>=4.0",
+    "shellingham>=1.5",
     "tzdata; sys_platform == 'win32'",
     "tomli>=2.0; python_version < '3.11'",
 ]
@@ -68,3 +69,7 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.mypy]
 python_version = "3.10"
 strict = true
+
+[[tool.mypy.overrides]]
+module = "shellingham"
+ignore_missing_imports = true

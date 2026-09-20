@@ -1,9 +1,12 @@
 """Command-line interface. Parses arguments into :class:`Options` and starts the TUI."""
 
+from enum import Enum
 from pathlib import Path
 from typing import Annotated
 
+import shellingham
 import typer
+from typer._completion_shared import get_completion_script  # no public API for these scripts
 
 from tclock import __version__, ui
 from tclock.config import ConfigExistsError, config_path, load_config, write_template
@@ -15,7 +18,7 @@ app = typer.Typer(
     name="tclock",
     help="A clock, timer, stopwatch and countdown in your terminal. Press q to quit.",
     invoke_without_command=True,
-    add_completion=False,
+    add_completion=True,
     no_args_is_help=False,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
@@ -234,6 +237,54 @@ def config_init(
 def config_path_command() -> None:
     """Print where the config file is read from on this platform."""
     typer.echo(str(config_path()))
+
+
+class Shell(str, Enum):
+    """Shells Typer can generate a completion script for."""
+
+    bash = "bash"
+    zsh = "zsh"
+    fish = "fish"
+    powershell = "powershell"
+    pwsh = "pwsh"
+
+
+def detect_shell() -> Shell:
+    """The shell running us, via shellingham; raises ``typer.BadParameter`` if unknown."""
+    try:
+        name, _ = shellingham.detect_shell()
+    except shellingham.ShellDetectionFailure:
+        raise typer.BadParameter(
+            "could not detect the shell; pass one of " + ", ".join(shell.value for shell in Shell)
+        ) from None
+    try:
+        return Shell(name)
+    except ValueError:
+        raise typer.BadParameter(
+            f"{name} has no completion support; pass one of "
+            + ", ".join(shell.value for shell in Shell)
+        ) from None
+
+
+@app.command()
+def completion(
+    shell: Annotated[
+        Shell | None,
+        typer.Argument(
+            show_default=False, help="Shell to target. Detected from the environment if omitted."
+        ),
+    ] = None,
+) -> None:
+    """Print a shell completion script for tclock to stdout.
+
+    Save it where your shell loads completions from, or use --install-completion
+    to have it appended to your shell's startup file.
+    """
+    chosen = shell if shell is not None else detect_shell()
+    script = get_completion_script(
+        prog_name="tclock", complete_var="_TCLOCK_COMPLETE", shell=chosen.value
+    )
+    typer.echo(script)
 
 
 def _launch(options: Options) -> None:
