@@ -77,6 +77,27 @@ can be `20:00`, `20:00:00` (today), `2027-01-01` (midnight), `2026-12-25 20:00:0
 time) or RFC 3339 such as `2026-12-25T20:00:00-04:00`. `-c` keeps counting (negative)
 after the moment has passed instead of blinking `0:00`; `-r` counts up since the moment.
 
+## Shell completion
+
+Completion for commands and flags is available for bash, zsh, fish and PowerShell
+(`powershell` and `pwsh`). Either let tclock append it to your shell's startup file:
+
+```shell
+tclock --install-completion
+```
+
+or print the script and put it where your shell loads completions from, for example:
+
+```shell
+tclock completion zsh > ~/.zfunc/_tclock          # zsh, with ~/.zfunc in $fpath
+tclock completion fish > ~/.config/fish/completions/tclock.fish
+tclock completion bash >> ~/.bashrc
+```
+
+`tclock completion` without a shell name detects the running shell. Restart the shell
+afterwards. Elvish, nushell and other shells are not supported by the completion machinery
+tclock uses (Typer and Click).
+
 ## Configuration
 
 tclock reads an optional TOML file:
