@@ -90,5 +90,5 @@ def parse_timezone(text: str) -> ZoneInfo:
     """An IANA zone key such as ``Europe/Oslo``."""
     try:
         return ZoneInfo(text.strip())
-    except ZoneInfoNotFoundError, ValueError:
+    except (ZoneInfoNotFoundError, ValueError):
         raise ParseError(f"{text!r} is not a known timezone (example: Europe/Oslo)") from None
