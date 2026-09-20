@@ -151,16 +151,20 @@ uv run tclock
 
 Releases are automated with GitHub Actions:
 
-1. In the Actions tab run **Release** and choose `patch`, `minor`, `major`, `rc` or
-   `stable`. The workflow runs `uv version --bump`, commits `chore: release vX.Y.Z` to
-   `main` and pushes the tag `vX.Y.Z`.
+1. Every pull request merged into `main` cuts a release. **Release** runs `uv version --bump`,
+   commits `chore: release vX.Y.Z` to `main` and pushes the tag `vX.Y.Z`. The bump is `patch`
+   unless the PR carries the label `release:minor` or `release:major`. A PR labelled
+   `skip-release` is merged without a release. The workflow can also be run by hand from the
+   Actions tab for `rc` and `stable` bumps.
 2. The tag triggers **Publish**, which builds the sdist and wheel and uploads them to PyPI
-   with [trusted publishing](https://docs.pypi.org/trusted-publishers/).
+   with [trusted publishing](https://docs.pypi.org/trusted-publishers/), and a GitHub release
+   is created with notes grouped by PR label (see `.github/release.yml`).
 
 One-time setup: on pypi.org add a trusted publisher for this repository with workflow
 `publish.yml` and environment `pypi`, and create a `pypi` environment in the GitHub repo
-settings. If `main` is branch-protected, give the Release workflow a token that may push
-to it (a PAT stored as a secret, or a ruleset bypass for GitHub Actions).
+settings. `main` is protected by a ruleset that requires a pull request and the `CI passed`
+check. The Release workflow pushes with a write-enabled deploy key (secret
+`RELEASE_DEPLOY_KEY`), which is exempt from the ruleset.
 
 ## License
 
