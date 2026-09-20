@@ -313,7 +313,7 @@ def completion(
         bool, typer.Option("--script", help="Print the completion script instead.")
     ] = False,
 ) -> None:
-    """Check whether shell completion is installed. Exit code 1 if it is not."""
+    """Check whether shell completion is installed and active. Exit code 1 if not installed."""
     name = _shell_or_exit(shell.value if shell is not None else None)
     if print_script:
         typer.echo(comp.script(name))
@@ -336,15 +336,25 @@ def completion(
     if st.rc_path is not None:
         rc_state = "loads it" if st.rc_wired else "does not load it"
         typer.echo(f"Startup file: {st.rc_path}  [{rc_state}]")
-    if st.installed:
-        typer.echo(f"Completion for {name} is installed.")
-        activate = comp.activate_command(name, st.script_path)
-        if activate is not None:
-            typer.echo("If Tab does not complete in this shell yet, run:")
-            typer.echo(f"  {activate}")
+    if not st.installed:
+        typer.echo("Run `tclock --install-completion` to install it.")
+        raise typer.Exit(code=1)
+    if st.active is None:
+        typer.echo(f"Completion for {name} is installed; {name} loads it on first use.")
         return
-    typer.echo("Run `tclock --install-completion` to install it.")
-    raise typer.Exit(code=1)
+    if not st.hook_present:
+        typer.echo(
+            f"Completion for {name} is installed, but it predates the {comp.ENV_VAR} hook, so"
+            " whether this shell has loaded it cannot be checked."
+        )
+        typer.echo("Run `tclock --install-completion` again to add the hook.")
+        return
+    if st.active:
+        typer.echo(f"Completion for {name} is installed and active in this shell.")
+        return
+    typer.echo(f"Completion for {name} is installed but not active in this shell yet.")
+    typer.echo("It was probably installed after this shell started. To use it now, run:")
+    typer.echo(f"  {comp.activate_command(name, st.script_path)}")
 
 
 def _launch(options: Options) -> None:

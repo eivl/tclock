@@ -288,13 +288,52 @@ def test_install_completion_then_status(in_zsh: None, home: Path) -> None:
     assert lines[0] == f"zsh completion installed in {home / '.zfunc' / '_tclock'}"
     assert lines[1] == "Completion will take effect once you restart the terminal."
     assert lines[2] == "To use it in this shell right away, run:"
-    assert lines[3] == "  fpath+=~/.zfunc; autoload -Uz compinit; compinit"
+    assert lines[3] == (
+        "  fpath+=~/.zfunc; autoload -Uz compinit; compinit; export TCLOCK_COMPLETION=zsh"
+    )
 
-    result = runner.invoke(cli.app, ["completion"])
+    # The shell that ran the install has not run the hook yet.
+    result = runner.invoke(cli.app, ["completion"], env={"TCLOCK_COMPLETION": ""})
     assert result.exit_code == 0, result.output
     assert "[ok]" in result.output and "loads it" in result.output
-    assert "Completion for zsh is installed." in result.output
-    assert "fpath+=~/.zfunc" in result.output
+    assert "installed but not active in this shell yet" in result.output
+    assert "export TCLOCK_COMPLETION=zsh" in result.output
+
+    # After the activation line (or in a new shell) the hook variable is set.
+    result = runner.invoke(cli.app, ["completion"], env={"TCLOCK_COMPLETION": "zsh"})
+    assert result.exit_code == 0, result.output
+    assert "installed and active in this shell." in result.output
+    assert "run:" not in result.output
+
+
+def test_completion_status_ignores_another_shells_variable(in_zsh: None, home: Path) -> None:
+    comp.install_completion("zsh")
+    result = runner.invoke(cli.app, ["completion"], env={"TCLOCK_COMPLETION": "bash"})
+    assert result.exit_code == 0, result.output
+    assert "not active in this shell yet" in result.output
+
+
+def test_completion_status_install_predating_hook(in_zsh: None, home: Path) -> None:
+    comp.install_completion("zsh")
+    zshrc = home / ".zshrc"
+    zshrc.write_text(
+        zshrc.read_text(encoding="utf-8").replace("export TCLOCK_COMPLETION=zsh\n", ""),
+        encoding="utf-8",
+    )
+    result = runner.invoke(cli.app, ["completion"], env={"TCLOCK_COMPLETION": ""})
+    assert result.exit_code == 0, result.output
+    assert "predates the TCLOCK_COMPLETION hook" in result.output
+    assert "--install-completion` again" in result.output
+
+
+def test_completion_status_fish_loads_on_first_use(
+    monkeypatch: pytest.MonkeyPatch, home: Path
+) -> None:
+    monkeypatch.setattr(comp.shellingham, "detect_shell", lambda: ("fish", "/usr/bin/fish"))
+    comp.install_completion("fish")
+    result = runner.invoke(cli.app, ["completion"])
+    assert result.exit_code == 0, result.output
+    assert "fish loads it on first use" in result.output
 
 
 def test_install_completion_fish_needs_no_restart(
