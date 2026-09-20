@@ -147,7 +147,8 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy src
 uv run tclock
 ```
 
-`uv run tox` runs the suite on every supported Python (3.10 to 3.14) plus lint and mypy.
+`uv run tox` runs the suite on every supported Python (3.10 to 3.14, plus the 3.15 release
+candidate) and lint and mypy.
 Missing interpreters are downloaded by uv. `uv run tox -e py310` runs a single version.
 
 ## Releasing
