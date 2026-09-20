@@ -172,9 +172,9 @@ def test_template_uncommented_round_trips_to_defaults(tmp_path: Path) -> None:
     assert loaded == cfg.Config()
 
 
-def test_template_mentions_path_and_help() -> None:
-    template = cfg.render_template(Path("/somewhere/config.toml"))
-    assert "# Location: /somewhere/config.toml" in template
+def test_template_mentions_path_and_help(tmp_path: Path) -> None:
+    template = cfg.render_template(tmp_path / "config.toml")
+    assert f"# Location: {tmp_path / 'config.toml'}" in template
     assert "# Digit size, a positive integer\n# size = 1\n" in template
     assert "(unset by default)\n# timezone = " in template
 
