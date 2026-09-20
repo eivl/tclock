@@ -1,7 +1,10 @@
+from pathlib import Path
+
 import pytest
 from typer.testing import CliRunner
 
-from tclock import __version__, cli
+from tclock import __version__, cli, config
+from tclock.config import render_template
 from tclock.resolve import Options
 
 runner = CliRunner()
@@ -146,3 +149,62 @@ def test_launch_prints_stopwatch_time_after_ui(
     monkeypatch.setattr(cli.ui, "run", lambda engine, **kwargs: FrozenStopwatch())
     cli._launch(Options(mode="stopwatch"))
     assert capsys.readouterr().out.strip() == "Stopwatch time: 0:42.0"
+
+
+# --- config subcommands ----------------------------------------------------------------------
+
+
+def test_config_without_subcommand_shows_help() -> None:
+    result = runner.invoke(cli.app, ["config"])
+    assert "Usage" in result.output
+    assert "init" in result.output and "path" in result.output
+
+
+def test_config_path_prints_platform_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(cli, "config_path", lambda: tmp_path / "config.toml")
+    result = runner.invoke(cli.app, ["config", "path"])
+    assert result.exit_code == 0
+    assert result.output.strip() == str(tmp_path / "config.toml")
+
+
+def test_config_init_writes_template_to_explicit_path(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    result = runner.invoke(cli.app, ["config", "init", "--path", str(path)])
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == f"Wrote {path}"
+    assert path.read_text(encoding="utf-8") == render_template(path)
+
+
+def test_config_init_uses_platform_path_by_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    target = tmp_path / "tclock" / "config.toml"
+    monkeypatch.setattr(config, "config_path", lambda: target)
+    result = runner.invoke(cli.app, ["config", "init"])
+    assert result.exit_code == 0, result.output
+    assert target.is_file()
+
+
+def test_config_init_refuses_to_overwrite_without_force(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text("keep = 1\n", encoding="utf-8")
+    result = runner.invoke(cli.app, ["config", "init", "--path", str(path)])
+    assert result.exit_code == 1
+    assert "already exists" in result.output and "--force" in result.output
+    assert path.read_text(encoding="utf-8") == "keep = 1\n"
+    result = runner.invoke(cli.app, ["config", "init", "--path", str(path), "--force"])
+    assert result.exit_code == 0, result.output
+    assert path.read_text(encoding="utf-8") == render_template(path)
+
+
+def test_config_init_reports_unwritable_location(tmp_path: Path) -> None:
+    blocker = tmp_path / "file"
+    blocker.write_text("", encoding="utf-8")
+    result = runner.invoke(cli.app, ["config", "init", "--path", str(blocker / "config.toml")])
+    assert result.exit_code == 1
+    assert "could not write config file" in result.output
+
+
+def test_config_init_does_not_launch_the_ui(launched: list[Options], tmp_path: Path) -> None:
+    runner.invoke(cli.app, ["config", "init", "--path", str(tmp_path / "c.toml")])
+    assert launched == []
