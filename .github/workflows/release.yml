@@ -40,7 +40,8 @@ jobs:
           git add pyproject.toml uv.lock
           git commit -m "chore: release v${VERSION}"
           git tag "v${VERSION}"
-          git push origin main "v${VERSION}"
+          # Atomic: if main is rejected, the tag is not pushed either.
+          git push --atomic origin main "v${VERSION}"
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
