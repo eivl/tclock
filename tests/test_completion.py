@@ -41,7 +41,7 @@ def test_detect_shell_errors_are_actionable(monkeypatch: pytest.MonkeyPatch) -> 
 
 def test_activate_command_per_shell() -> None:
     path = Path("/h/.bash_completions/tclock.sh")
-    assert comp.activate_command("bash", path) == "source '/h/.bash_completions/tclock.sh'"
+    assert comp.activate_command("bash", path) == f"source '{path}'"
     assert comp.activate_command("zsh", path) == "fpath+=~/.zfunc; autoload -Uz compinit; compinit"
     assert comp.activate_command("powershell", path) == ". $PROFILE"
     assert comp.activate_command("pwsh", path) == ". $PROFILE"
