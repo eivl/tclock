@@ -1,6 +1,6 @@
 [project]
 name = "tclock"
-version = "1.0.0"
+version = "1.0.1"
 description = "A clock, timer, stopwatch and countdown for your terminal, built with Textual"
 readme = "README.md"
 license = "MIT"
