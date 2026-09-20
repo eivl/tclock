@@ -1,10 +1,10 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from tclock.modes import Countdown, Frame
 from tclock.timefmt import DurationFormat
 from tests.conftest import FakeClock
 
-TARGET = datetime(2026, 1, 1, tzinfo=UTC)
+TARGET = datetime(2026, 1, 1, tzinfo=timezone.utc)
 TARGET_MS = int(TARGET.timestamp() * 1000)
 
 

@@ -8,14 +8,20 @@ error.
 """
 
 import sys
-import tomllib
 import types
 from collections.abc import Callable
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Any, cast, get_args, get_origin
+from typing import Any, TypeVar, cast, get_args, get_origin
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
 
 import platformdirs
+
+T = TypeVar("T")
 
 APP_NAME = "tclock"
 
@@ -89,7 +95,7 @@ def load_config(path: Path | None = None, *, warn: Callable[[str], None] = warn_
     )
 
 
-def _section[T](cls: type[T], data: dict[str, Any], name: str, warn: Callable[[str], None]) -> T:
+def _section(cls: type[T], data: dict[str, Any], name: str, warn: Callable[[str], None]) -> T:
     raw = data.get(name, {})
     result = cls()
     if not isinstance(raw, dict):

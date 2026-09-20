@@ -4,7 +4,7 @@ A clock, timer, stopwatch and countdown for your terminal, drawn with big block 
 Built with [Textual](https://textual.textualize.io/). A Python port of
 [race604/clock-tui](https://github.com/race604/clock-tui).
 
-Works on Linux, macOS and Windows. Requires Python 3.14 or newer.
+Works on Linux, macOS and Windows. Requires Python 3.10 or newer.
 
 ## Install
 
@@ -146,6 +146,9 @@ uv run pytest
 uv run ruff check . && uv run ruff format --check . && uv run mypy src
 uv run tclock
 ```
+
+`uv run tox` runs the suite on every supported Python (3.10 to 3.14) plus lint and mypy.
+Missing interpreters are downloaded by uv. `uv run tox -e py310` runs a single version.
 
 ## Releasing
 
