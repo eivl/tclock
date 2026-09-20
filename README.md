@@ -80,23 +80,17 @@ after the moment has passed instead of blinking `0:00`; `-r` counts up since the
 ## Shell completion
 
 Completion for commands and flags is available for bash, zsh, fish and PowerShell
-(`powershell` and `pwsh`). Either let tclock append it to your shell's startup file:
+(`powershell` and `pwsh`).
 
 ```shell
-tclock --install-completion
+tclock --install-completion   # detects the shell, installs, and prints how to activate it now
+tclock completion             # checks whether it is installed and up to date
+tclock --show-completion      # prints the script for the current shell
 ```
 
-or print the script and put it where your shell loads completions from, for example:
-
-```shell
-tclock completion zsh > ~/.zfunc/_tclock          # zsh, with ~/.zfunc in $fpath
-tclock completion fish > ~/.config/fish/completions/tclock.fish
-tclock completion bash >> ~/.bashrc
-```
-
-`tclock completion` without a shell name detects the running shell. Restart the shell
-afterwards. Elvish, nushell and other shells are not supported by the completion machinery
-tclock uses (Typer and Click).
+`tclock completion --script --shell fish` prints the script for another shell, for example to
+put in `~/.config/fish/completions/tclock.fish` by hand. Elvish, nushell and other shells are
+not supported by the completion machinery tclock uses (Typer and Click).
 
 ## Configuration
 

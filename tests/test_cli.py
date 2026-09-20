@@ -4,6 +4,7 @@ import pytest
 from typer.testing import CliRunner
 
 from tclock import __version__, cli, config
+from tclock import completion as comp
 from tclock.config import render_template
 from tclock.resolve import Options
 
@@ -215,12 +216,15 @@ def test_config_init_does_not_launch_the_ui(launched: list[Options], tmp_path: P
 SHELLS = ["bash", "zsh", "fish", "powershell", "pwsh"]
 
 
-@pytest.mark.parametrize("shell", SHELLS)
-def test_completion_prints_script_for_each_shell(shell: str) -> None:
-    result = runner.invoke(cli.app, ["completion", shell])
-    assert result.exit_code == 0, result.output
-    assert "_TCLOCK_COMPLETE" in result.output
-    assert "tclock" in result.output
+@pytest.fixture
+def home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    return tmp_path
+
+
+@pytest.fixture
+def in_zsh(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(comp.shellingham, "detect_shell", lambda: ("zsh", "/bin/zsh"))
 
 
 @pytest.mark.parametrize(
@@ -234,38 +238,99 @@ def test_completion_prints_script_for_each_shell(shell: str) -> None:
     ],
 )
 def test_completion_script_has_the_shape_each_shell_expects(shell: str, opening: str) -> None:
-    result = runner.invoke(cli.app, ["completion", shell])
+    result = runner.invoke(cli.app, ["completion", "--script", "--shell", shell])
+    assert result.exit_code == 0, result.output
     assert result.output.startswith(opening)
+    assert "_TCLOCK_COMPLETE" in result.output
+
+
+def test_completion_script_for_detected_shell(in_zsh: None) -> None:
+    result = runner.invoke(cli.app, ["completion", "--script"])
+    assert result.exit_code == 0, result.output
+    assert result.output.startswith("#compdef tclock")
+
+
+def test_show_completion_prints_detected_shell_script(in_zsh: None) -> None:
+    result = runner.invoke(cli.app, ["--show-completion"])
+    assert result.exit_code == 0, result.output
+    assert result.output.startswith("#compdef tclock")
 
 
 def test_completion_rejects_unknown_shell() -> None:
-    result = runner.invoke(cli.app, ["completion", "elvish"])
+    result = runner.invoke(cli.app, ["completion", "--shell", "elvish"])
     assert result.exit_code == 2
     assert "elvish" in result.output
 
 
-def test_completion_detects_shell(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(cli.shellingham, "detect_shell", lambda: ("fish", "/usr/bin/fish"))
-    result = runner.invoke(cli.app, ["completion"])
-    assert result.exit_code == 0, result.output
-    assert result.output.startswith("complete --command tclock")
-
-
 def test_completion_reports_undetectable_shell(monkeypatch: pytest.MonkeyPatch) -> None:
     def fail() -> tuple[str, str]:
-        raise cli.shellingham.ShellDetectionFailure()
+        raise comp.shellingham.ShellDetectionFailure()
 
-    monkeypatch.setattr(cli.shellingham, "detect_shell", fail)
+    monkeypatch.setattr(comp.shellingham, "detect_shell", fail)
     result = runner.invoke(cli.app, ["completion"])
     assert result.exit_code == 2
     assert "could not detect the shell" in result.output
 
 
-def test_completion_reports_unsupported_detected_shell(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(cli.shellingham, "detect_shell", lambda: ("elvish", "/usr/bin/elvish"))
+def test_completion_status_not_installed(in_zsh: None, home: Path) -> None:
     result = runner.invoke(cli.app, ["completion"])
-    assert result.exit_code == 2
-    assert "elvish has no completion support" in result.output
+    assert result.exit_code == 1
+    assert "Shell: zsh (detected)" in result.output
+    assert "[missing]" in result.output
+    assert "does not load it" in result.output
+    assert "tclock --install-completion" in result.output
+
+
+def test_install_completion_then_status(in_zsh: None, home: Path) -> None:
+    result = runner.invoke(cli.app, ["--install-completion"])
+    assert result.exit_code == 0, result.output
+    lines = result.output.splitlines()
+    assert lines[0] == f"zsh completion installed in {home / '.zfunc' / '_tclock'}"
+    assert lines[1] == "Completion will take effect once you restart the terminal."
+    assert lines[2] == "To use it in this shell right away, run:"
+    assert lines[3] == "  fpath+=~/.zfunc; autoload -Uz compinit; compinit"
+
+    result = runner.invoke(cli.app, ["completion"])
+    assert result.exit_code == 0, result.output
+    assert "[ok]" in result.output and "loads it" in result.output
+    assert "Completion for zsh is installed." in result.output
+    assert "fpath+=~/.zfunc" in result.output
+
+
+def test_install_completion_fish_needs_no_restart(
+    monkeypatch: pytest.MonkeyPatch, home: Path
+) -> None:
+    monkeypatch.setattr(comp.shellingham, "detect_shell", lambda: ("fish", "/usr/bin/fish"))
+    result = runner.invoke(cli.app, ["--install-completion"])
+    assert result.exit_code == 0, result.output
+    assert "fish loads it on first use, so no restart is needed." in result.output
+    assert (home / ".config" / "fish" / "completions" / "tclock.fish").is_file()
+
+
+def test_completion_status_outdated_script(in_zsh: None, home: Path) -> None:
+    comp.install_completion("zsh")
+    (home / ".zfunc" / "_tclock").write_text("# old\n", encoding="utf-8")
+    result = runner.invoke(cli.app, ["completion", "--shell", "zsh"])
+    assert result.exit_code == 1
+    assert "[outdated, reinstall to update]" in result.output
+    assert "(detected)" not in result.output
+
+
+def test_completion_status_powershell_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(comp, "powershell_profile", lambda shell: None)
+    result = runner.invoke(cli.app, ["completion", "--shell", "pwsh"])
+    assert result.exit_code == 1
+    assert "Note: could not run pwsh to find its profile" in result.output
+    assert "could not be checked" in result.output
+
+
+def test_completion_does_not_launch_the_ui(
+    launched: list[Options], in_zsh: None, home: Path
+) -> None:
+    runner.invoke(cli.app, ["completion"])
+    runner.invoke(cli.app, ["--show-completion"])
+    runner.invoke(cli.app, ["--install-completion"])
+    assert launched == []
 
 
 def _complete(words: str) -> list[str]:
@@ -285,4 +350,5 @@ def test_completion_protocol_completes_subcommands() -> None:
 def test_completion_protocol_completes_options_and_nested_commands() -> None:
     assert _complete("tclock timer --du") == ["--duration"]
     assert _complete("tclock config i") == ["init"]
-    assert _complete("tclock completion po") == ["powershell"]
+    assert _complete("tclock completion --sh") == ["--shell"]
+    assert _complete("tclock completion --shell po") == ["powershell"]

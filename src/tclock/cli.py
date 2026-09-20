@@ -4,11 +4,10 @@ from enum import Enum
 from pathlib import Path
 from typing import Annotated
 
-import shellingham
 import typer
-from typer._completion_shared import get_completion_script  # no public API for these scripts
 
 from tclock import __version__, ui
+from tclock import completion as comp
 from tclock.config import ConfigExistsError, config_path, load_config, write_template
 from tclock.modes import Stopwatch
 from tclock.parsing import ParseError, parse_color, parse_datetime, parse_duration, parse_timezone
@@ -18,7 +17,7 @@ app = typer.Typer(
     name="tclock",
     help="A clock, timer, stopwatch and countdown in your terminal. Press q to quit.",
     invoke_without_command=True,
-    add_completion=True,
+    add_completion=False,  # replaced by our own options below, which add activation hints
     no_args_is_help=False,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
@@ -72,6 +71,39 @@ def _version(value: bool) -> None:
         raise typer.Exit()
 
 
+def _shell_or_exit(shell: str | None) -> str:
+    if shell is not None:
+        return shell
+    try:
+        return comp.detect_shell()
+    except comp.ShellError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=2) from None
+
+
+def _install_completion(value: bool) -> None:
+    if not value:
+        return
+    shell = _shell_or_exit(None)
+    path = comp.install_completion(shell)
+    typer.echo(f"{shell} completion installed in {path}")
+    typer.echo("Completion will take effect once you restart the terminal.")
+    activate = comp.activate_command(shell, path)
+    if activate is None:
+        typer.echo(f"{shell} loads it on first use, so no restart is needed.")
+    else:
+        typer.echo("To use it in this shell right away, run:")
+        typer.echo(f"  {activate}")
+    raise typer.Exit()
+
+
+def _show_completion(value: bool) -> None:
+    if not value:
+        return
+    typer.echo(comp.script(_shell_or_exit(None)))
+    raise typer.Exit()
+
+
 def _options(ctx: typer.Context) -> Options:
     options = ctx.find_root().obj
     assert isinstance(options, Options)
@@ -97,6 +129,24 @@ def root(
     ] = None,
     version: Annotated[
         bool, typer.Option("--version", callback=_version, is_eager=True, help="Show version.")
+    ] = False,
+    install_completion: Annotated[
+        bool,
+        typer.Option(
+            "--install-completion",
+            callback=_install_completion,
+            is_eager=True,
+            help="Install completion for the current shell.",
+        ),
+    ] = False,
+    show_completion: Annotated[
+        bool,
+        typer.Option(
+            "--show-completion",
+            callback=_show_completion,
+            is_eager=True,
+            help="Show the completion script for the current shell.",
+        ),
     ] = False,
 ) -> None:
     ctx.obj = Options(color=color, size=size)
@@ -240,7 +290,7 @@ def config_path_command() -> None:
 
 
 class Shell(str, Enum):
-    """Shells Typer can generate a completion script for."""
+    """Shells with completion support."""
 
     bash = "bash"
     zsh = "zsh"
@@ -249,42 +299,52 @@ class Shell(str, Enum):
     pwsh = "pwsh"
 
 
-def detect_shell() -> Shell:
-    """The shell running us, via shellingham; raises ``typer.BadParameter`` if unknown."""
-    try:
-        name, _ = shellingham.detect_shell()
-    except shellingham.ShellDetectionFailure:
-        raise typer.BadParameter(
-            "could not detect the shell; pass one of " + ", ".join(shell.value for shell in Shell)
-        ) from None
-    try:
-        return Shell(name)
-    except ValueError:
-        raise typer.BadParameter(
-            f"{name} has no completion support; pass one of "
-            + ", ".join(shell.value for shell in Shell)
-        ) from None
-
-
 @app.command()
 def completion(
     shell: Annotated[
         Shell | None,
-        typer.Argument(
-            show_default=False, help="Shell to target. Detected from the environment if omitted."
+        typer.Option(
+            "--shell",
+            show_default=False,
+            help="Shell to check. Detected from the environment if omitted.",
         ),
     ] = None,
+    print_script: Annotated[
+        bool, typer.Option("--script", help="Print the completion script instead.")
+    ] = False,
 ) -> None:
-    """Print a shell completion script for tclock to stdout.
-
-    Save it where your shell loads completions from, or use --install-completion
-    to have it appended to your shell's startup file.
-    """
-    chosen = shell if shell is not None else detect_shell()
-    script = get_completion_script(
-        prog_name="tclock", complete_var="_TCLOCK_COMPLETE", shell=chosen.value
-    )
-    typer.echo(script)
+    """Check whether shell completion is installed. Exit code 1 if it is not."""
+    name = _shell_or_exit(shell.value if shell is not None else None)
+    if print_script:
+        typer.echo(comp.script(name))
+        return
+    st = comp.status(name)
+    detected = " (detected)" if shell is None else ""
+    typer.echo(f"Shell: {name}{detected}")
+    if st.script_path is None:
+        for note in st.notes:
+            typer.echo(f"Note: {note}")
+        typer.echo(f"Completion for {name} could not be checked.")
+        raise typer.Exit(code=1)
+    if not st.script_exists:
+        script_state = "missing"
+    elif not st.script_current:
+        script_state = "outdated, reinstall to update"
+    else:
+        script_state = "ok"
+    typer.echo(f"Script: {st.script_path}  [{script_state}]")
+    if st.rc_path is not None:
+        rc_state = "loads it" if st.rc_wired else "does not load it"
+        typer.echo(f"Startup file: {st.rc_path}  [{rc_state}]")
+    if st.installed:
+        typer.echo(f"Completion for {name} is installed.")
+        activate = comp.activate_command(name, st.script_path)
+        if activate is not None:
+            typer.echo("If Tab does not complete in this shell yet, run:")
+            typer.echo(f"  {activate}")
+        return
+    typer.echo("Run `tclock --install-completion` to install it.")
+    raise typer.Exit(code=1)
 
 
 def _launch(options: Options) -> None:
