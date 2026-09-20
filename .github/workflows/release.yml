@@ -1,6 +1,13 @@
 name: Release
 
+# Every pull request merged into main cuts a release. The bump size comes from
+# the PR's labels: release:major, release:minor, otherwise patch. A PR labelled
+# skip-release is merged without a release. Manual dispatch remains available
+# for rc/stable bumps or re-runs.
 on:
+  pull_request:
+    types: [closed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       bump:
@@ -12,8 +19,17 @@ on:
 permissions:
   contents: write
 
+# Serialise releases so two quick merges cannot bump from the same base.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   bump:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true &&
+       !contains(github.event.pull_request.labels.*.name, 'skip-release'))
     runs-on: ubuntu-latest
     steps:
       # Push with a deploy key rather than GITHUB_TOKEN: the key can bypass the
@@ -26,10 +42,30 @@ jobs:
       - uses: astral-sh/setup-uv@v10.1.0
         with:
           python-version: "3.14"
+      - name: Choose bump size
+        id: size
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_BUMP: ${{ inputs.bump }}
+          MAJOR: ${{ contains(github.event.pull_request.labels.*.name, 'release:major') }}
+          MINOR: ${{ contains(github.event.pull_request.labels.*.name, 'release:minor') }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            bump="$INPUT_BUMP"
+          elif [ "$MAJOR" = "true" ]; then
+            bump=major
+          elif [ "$MINOR" = "true" ]; then
+            bump=minor
+          else
+            bump=patch
+          fi
+          echo "bump=$bump" >> "$GITHUB_OUTPUT"
       - name: Bump version
         id: bump
+        env:
+          BUMP: ${{ steps.size.outputs.bump }}
         run: |
-          uv version --bump "${{ inputs.bump }}" --no-sync
+          uv version --bump "$BUMP" --no-sync
           echo "version=$(uv version --short)" >> "$GITHUB_OUTPUT"
       - name: Commit and tag
         env:
